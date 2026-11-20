@@ -24,6 +24,9 @@
       <dl><dt>编号</dt><dd>{{ selectedNode.id }}</dd></dl>
       <dl><dt>名称</dt><dd>{{ selectedNode.name || selectedNode.label }}</dd></dl>
       <dl v-for="f in detailFields" :key="f"><dt>{{ f }}</dt><dd>{{ selectedNode[f] ?? '—' }}</dd></dl>
+      <dl v-if="attribution"><dt>漏斗归因步序</dt><dd>{{ attribution.data_version }} / 第 {{ attribution.step_index }} 步（{{ attribution.step_id }}）</dd></dl>
+      <dl v-if="attribution"><dt>步骤转化人数</dt><dd>{{ attribution.count ?? '不可用（历史仅事件合计）' }}</dd></dl>
+      <dl v-if="attribution"><dt>分组归因</dt><dd>{{ attribution.group_attribution_available ? (attribution.group_results || []).length + ' 组' : '不可用：历史分组只有事件合计' }}</dd></dl>
       <div style="grid-column:1/-1; margin-top:8px; display:flex; gap:6px;">
         <button v-for="action in actions" :key="action" class="btn" :data-testid="`action-${selectedNode.id}-${action}`" @click="runAction(action, selectedNode)">{{ action }}</button>
       </div>
@@ -44,7 +47,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { request } from '@/api/client'
 const ENDPOINT = '/api/behavior_path'
-const columns = ["模型编号", "起始事件", "目标事件", "时间窗口", "路径深度", "会话标识", "路径过滤", "分析区间"]
+const columns = ["模型编号", "起始事件", "目标事件", "时间窗口", "路径深度", "会话标识", "路径过滤", "分析区间", "关联漏斗", "漏斗结果版本", "归因步骤"]
 const actions = ["提交校验", "标记生效", "停用模型"]
 const statuses = ["草稿", "待校验", "已生效", "已停用"]
 const STATUS_COLORS: Record<string,string> = { '草稿':'#e2e8f0','待校验':'#fef3c7','已启用':'#d1fae5','已停用':'#fee2e2' }
@@ -65,7 +68,19 @@ function layout(nodes: any[]) {
   nodes.forEach((n,i) => { pos[n.id] = { x: 120 + (i % 5) * 150, y: 50 + Math.floor(i / 5) * 80 } })
   nodePos.value = pos
 }
-function selectNode(node: any) { selectedNode.value = selectedNode.value?.id === node.id ? null : node }
+const attribution = ref<any>(null)
+async function loadAttribution(node: any) {
+  attribution.value = null
+  if (!node?.funnel_id || !node?.funnel_result_version || !node?.funnel_step_id) return
+  try {
+    const res = await request(`${ENDPOINT.replace('behavior_path', 'funnel-analyze')}/${node.funnel_id}/versions/${node.funnel_result_version}/steps/${node.funnel_step_id}`)
+    if (res.ok) attribution.value = await res.json()
+  } catch (e) { attribution.value = null }
+}
+function selectNode(node: any) {
+  selectedNode.value = selectedNode.value?.id === node.id ? null : node
+  void loadAttribution(selectedNode.value)
+}
 function startDrag(e: MouseEvent, node: any) { dragNode = node; const onMove = (ev: MouseEvent) => { if(!dragNode) return; nodePos.value[node.id] = { x: ev.offsetX, y: ev.offsetY } }; const onUp = () => { dragNode = null; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }; document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp) }
 async function reload() {
   try { const res = await request(ENDPOINT); const data = await res.json(); graph.nodes = data.nodes || []; graph.edges = data.edges || []; layout(graph.nodes) } catch(e) { errorMessage.value = '加载失败' }

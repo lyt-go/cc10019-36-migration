@@ -25,6 +25,25 @@ app.add_middleware(
 for module in ROUTERS:
     app.include_router(module.router)
 
+# 前端页面按模块名使用下划线路径（/api/funnel_analyze），后端路由使用连字符
+# （/api/funnel-analyze）。这里做一次只针对模块名前缀的兼容改写，两种写法都能用。
+_MODULE_PATH_ALIASES = {
+    f"/api/{name}": f"/api/{name.replace('_', '-')}" for name in store.module_names()
+}
+
+
+@app.middleware("http")
+async def _module_path_alias(request, call_next):
+    path = request.scope.get("path", "")
+    for underscore, hyphen in _MODULE_PATH_ALIASES.items():
+        if path == underscore or path.startswith(underscore + "/"):
+            request.scope["path"] = hyphen + path[len(underscore):]
+            raw = request.scope.get("raw_path")
+            if raw:
+                request.scope["raw_path"] = hyphen.encode() + raw[len(underscore):]
+            break
+    return await call_next(request)
+
 
 @app.get("/api/health")
 def health() -> dict[str, object]:

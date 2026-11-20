@@ -44,6 +44,22 @@ def build_path_sankey(model_id: str) -> PathResult:
     path_depth = model.get("path_depth", 5)
     path_filter = model.get("path_filter", "")
 
+    # 漏斗归因：路径固定读取模型登记的漏斗结果版本，按稳定步骤标识取步序与分组，
+    # 不读取“当前活动版本”，避免切换/回滚期间路径引用与步序落到不同数据版本。
+    funnel_attribution = None
+    funnel_id = model.get("funnel_id", "")
+    funnel_result_version = model.get("funnel_result_version", "")
+    funnel_step_id = model.get("funnel_step_id", "")
+    if funnel_id and funnel_result_version and funnel_step_id:
+        from app.services.funnel_analyze import resolve_step_reference
+
+        try:
+            funnel_attribution = resolve_step_reference(
+                funnel_id, funnel_result_version, funnel_step_id
+            )
+        except ValueError as error:
+            raise ValueError(f"Funnel step attribution invalid: {error}") from error
+
     events = _generate_path_events(start_event, target_event, 200)
 
     # 按用户分组构建路径
@@ -108,6 +124,7 @@ def build_path_sankey(model_id: str) -> PathResult:
         sankey_links=links,
         conversion_paths=conversion_paths[:50],
         total_conversions=total_conversions,
+        funnel_step_attribution=funnel_attribution,
     )
 
     # 存储产物

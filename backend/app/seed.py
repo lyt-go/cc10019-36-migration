@@ -443,6 +443,10 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
             "session_split_rule": "SS-001",
             "path_filter": "",
             "analysis_range": "2026-11-01/2026-11-15",
+            # 路径归因固定读取历史 v1 报告所在的步骤快照，不随当前漏斗顺序漂移
+            "funnel_id": "FN-003",
+            "funnel_result_version": "v1-2026-11-10",
+            "funnel_step_id": "ST-FN003-01",
         },
         {
             "id": 2,
@@ -457,6 +461,9 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
             "session_split_rule": "SS-001",
             "path_filter": "ATTR-003 > 100",
             "analysis_range": "2026-11-10/2026-11-15",
+            "funnel_id": "FN-003",
+            "funnel_result_version": "v1-2026-11-10",
+            "funnel_step_id": "ST-FN003-02",
         },
     ],
     # ========== 漏斗分析 ==========
@@ -469,6 +476,22 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
             "funnel_id": "FN-001",
             "funnel_name": "浏览到下单转化漏斗",
             "step_events": ["EV-001", "EV-002", "EV-003"],
+            "step_defs": [
+                {"step_id": "ST-FN001-01", "event_id": "EV-001", "step_name": "页面浏览"},
+                {"step_id": "ST-FN001-02", "event_id": "EV-002", "step_name": "商品点击"},
+                {"step_id": "ST-FN001-03", "event_id": "EV-003", "step_name": "下单成功"},
+            ],
+            "revision": "FN-001-r1",
+            "revision_history": [
+                {
+                    "revision": "FN-001-r1",
+                    "step_defs": [
+                        {"step_id": "ST-FN001-01", "event_id": "EV-001", "step_name": "页面浏览"},
+                        {"step_id": "ST-FN001-02", "event_id": "EV-002", "step_name": "商品点击"},
+                        {"step_id": "ST-FN001-03", "event_id": "EV-003", "step_name": "下单成功"},
+                    ],
+                },
+            ],
             "conversion_window": 86400,
             "step_window": 3600,
             "related_event": "EV-004",
@@ -483,11 +506,56 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
             "funnel_id": "FN-002",
             "funnel_name": "点击到支付转化漏斗",
             "step_events": ["EV-002", "EV-003", "EV-004"],
+            "step_defs": [
+                {"step_id": "ST-FN002-01", "event_id": "EV-002", "step_name": "商品点击"},
+                {"step_id": "ST-FN002-02", "event_id": "EV-003", "step_name": "下单成功"},
+                {"step_id": "ST-FN002-03", "event_id": "EV-004", "step_name": "支付完成"},
+            ],
+            "revision": "FN-002-r1",
+            "revision_history": [
+                {
+                    "revision": "FN-002-r1",
+                    "step_defs": [
+                        {"step_id": "ST-FN002-01", "event_id": "EV-002", "step_name": "商品点击"},
+                        {"step_id": "ST-FN002-02", "event_id": "EV-003", "step_name": "下单成功"},
+                        {"step_id": "ST-FN002-03", "event_id": "EV-004", "step_name": "支付完成"},
+                    ],
+                },
+            ],
             "conversion_window": 43200,
             "step_window": 1800,
             "related_event": "",
             "group_dimension": "ATTR-005",
             "data_range": "2026-11-10/2026-11-15",
+        },
+        {
+            "id": 3,
+            "status": "已生效",
+            "pending": False,
+            "abnormal": False,
+            "funnel_id": "FN-003",
+            "funnel_name": "商品详情两步漏斗",
+            # 两个步骤都是商品详情事件：步骤靠 step_id 区分，不能靠事件编号或数组位置
+            "step_events": ["EV-002", "EV-002"],
+            "step_defs": [
+                {"step_id": "ST-FN003-01", "event_id": "EV-002", "step_name": "商品详情"},
+                {"step_id": "ST-FN003-02", "event_id": "EV-002", "step_name": "商品详情"},
+            ],
+            "revision": "FN-003-r1",
+            "revision_history": [
+                {
+                    "revision": "FN-003-r1",
+                    "step_defs": [
+                        {"step_id": "ST-FN003-01", "event_id": "EV-002", "step_name": "商品详情"},
+                        {"step_id": "ST-FN003-02", "event_id": "EV-002", "step_name": "商品详情"},
+                    ],
+                },
+            ],
+            "conversion_window": 86400,
+            "step_window": 3600,
+            "related_event": "",
+            "group_dimension": "ATTR-001",
+            "data_range": "2026-11-01/2026-11-15",
         },
     ],
     # ========== 用户分群 ==========
@@ -780,6 +848,40 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
             "color_scale": "plasma",
             "output_image": "",
             "refresh_freq": "hourly",
+        },
+    ],
+}
+
+# ========== 历史漏斗 v1 报告（只读，供历史报告与路径查询） ==========
+# v1 用数组位置表达步骤、用事件编号记录分组；分组明细只有“事件合计”，
+# 没有按步骤拆分的人数。迁移时只能保留事件合计，不能凭空拆成步骤人数。
+LEGACY_FUNNEL_REPORTS: dict[str, list[dict[str, Any]]] = {
+    "FN-003": [
+        {
+            "result_schema": "v1",
+            "data_version": "v1-2026-11-10",
+            "funnel_id": "FN-003",
+            "funnel_name": "商品详情两步漏斗",
+            # 历史报告的步骤快照：当时两步都是商品详情，顺序与 step_id 都已固定
+            "funnel_revision": "FN-003-r1",
+            "steps": [
+                {"step_id": "ST-FN003-01", "event_id": "EV-002", "step_name": "商品详情"},
+                {"step_id": "ST-FN003-02", "event_id": "EV-002", "step_name": "商品详情"},
+            ],
+            "step_counts": [600, 360],
+            "step_rates": [1.0, 0.6],
+            "total_conversion_rate": 0.6,
+            "group_dimension": "ATTR-001",
+            # 只有事件合计：EV-002 的全量分组人数，不是任何单独一步的转化人数
+            "group_results": [
+                {"event_id": "EV-002", "group_value": "app", "count": 150},
+                {"event_id": "EV-002", "group_value": "h5", "count": 150},
+                {"event_id": "EV-002", "group_value": "miniapp", "count": 150},
+                {"event_id": "EV-002", "group_value": "web", "count": 150},
+            ],
+            "group_granularity": "event_total_only",
+            "path_model_id": "BP-001",
+            "created_at": "2026-11-10T09:30:00",
         },
     ],
 }

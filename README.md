@@ -74,6 +74,47 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+- 前端页面按模块名使用下划线路径（`/api/funnel_analyze`），后端路由使用连字符
+  （`/api/funnel-analyze`）；`app/main.py` 里有一段只改写模块名前缀的兼容中间件。
+
+## 漏斗第 2 版本结果数据
+
+漏斗 v1 用数组位置和事件编号表达步骤，同一个事件出现两次就无法区分。v2 给每个
+步骤分配稳定 `step_id`，结果按 `data_version` 分版本存放，并用一个活动版本指针控制
+线上读取：
+
+| 接口 | 作用 |
+| --- | --- |
+| `POST /api/funnel-analyze/{funnel_id}/run?data_version=` | 产出 v2 结果版本 |
+| `POST /api/funnel-analyze/{funnel_id}/steps` | 调整步骤/步序，旧定义归档为修订快照 |
+| `POST /api/funnel-analyze/{funnel_id}/migrate?source_version=` | 把历史 v1 报告迁移成 v2 |
+| `POST /api/funnel-analyze/{funnel_id}/switch?version=` | 切换活动版本（只移动指针） |
+| `POST /api/funnel-analyze/{funnel_id}/rollback?version=` | 回滚到历史版本（不覆盖数据） |
+| `GET /api/funnel-analyze/{funnel_id}/versions` | 版本列表 + 发布/切换/回滚审计事件 |
+| `GET /api/funnel-analyze/{funnel_id}/versions/{version}` | 按版本号读结果（历史报告走这里） |
+| `GET /api/funnel-analyze/{funnel_id}/versions/{version}/consistency` | 核对步序/分组归因是否同版本 |
+| `GET /api/funnel-analyze/{funnel_id}/versions/{version}/steps/{step_id}` | 路径按版本+步骤标识取归因 |
+| `GET /api/funnel-analyze/legacy/{funnel_id}?version=` | 读历史 v1 报告（事件合计口径） |
+
+行为路径模型通过 `funnel_id` + `funnel_result_version` + `funnel_step_id` 固定归因版本；
+切换/回滚期间路径引用不会漂移。历史 v1 分组只有事件合计，迁移与归因都标记为
+`legacy_event_total_only`，不会把合计人数当成某一步的转化人数。
+
+验证环境复现“切换后、路径取数前回滚”：
+
+```bash
+B=http://127.0.0.1:8000/api
+curl -X POST "$B/funnel-analyze/FN-003/run?data_version=v2-r2"
+curl -X POST "$B/funnel-analyze/FN-003/migrate?source_version=v1-2026-11-10&target_version=v2-mig"
+curl -X POST "$B/funnel-analyze/FN-003/switch?version=v2-r2"
+curl -X POST "$B/funnel-analyze/FN-003/rollback?version=v2-mig"
+curl "$B/funnel-analyze/FN-003/versions/v2-mig/consistency"
+curl "$B/behavior-path/BP-001/result"        # funnel_step_attribution 仍指 v1-2026-11-10
+curl "$B/funnel-analyze/legacy/FN-003?version=v1-2026-11-10"
+```
+
+对应的回归用例在 `backend/tests/test_funnel_v2_migration.py`，覆盖迁移不拆步骤人数、
+换序后迁移仍按历史修订绑定、切换后回滚不覆盖新版本、路径步序与分组同版本等断言。
 
 领域：数据工程
 子方向：数据分析与数据应用

@@ -179,6 +179,11 @@ class BehaviorPathEntry(BaseModel):
     session_split_rule: str = Field(..., description="会话切割规则编号")
     path_filter: str = Field("", description="路径过滤条件")
     analysis_range: str = Field(..., description="分析区间")
+    funnel_id: str = Field("", description="关联漏斗编号")
+    funnel_result_version: str = Field(
+        "", description="固定的漏斗结果数据版本；为空时不读取漏斗归因"
+    )
+    funnel_step_id: str = Field("", description="归因步骤的稳定步骤标识")
 
 
 # ========== 漏斗分析 ==========
@@ -192,6 +197,10 @@ class FunnelAnalyzeEntry(BaseModel):
     funnel_id: str = Field(..., description="漏斗编号")
     funnel_name: str = Field(..., description="漏斗名称")
     step_events: list[str] = Field(default_factory=list, description="步骤事件编号序列")
+    step_defs: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="步骤定义：每步携带稳定 step_id，顺序即当前步序；为空时按事件+出现序号推导",
+    )
     conversion_window: int = Field(86400, description="转化窗口（秒）")
     step_window: int = Field(3600, description="步骤窗口（秒）")
     related_event: str = Field("", description="关联事件编号")
@@ -410,7 +419,7 @@ class SegmentResult(BaseModel):
 
 
 class FunnelResult(BaseModel):
-    """漏斗分析结果产物。"""
+    """漏斗分析结果产物（第 1 版本，按数组位置表达步骤，仅保留读取兼容）。"""
 
     funnel_id: str
     funnel_name: str
@@ -419,6 +428,40 @@ class FunnelResult(BaseModel):
     step_rates: list[float] = Field(default_factory=list)
     total_conversion_rate: float = 0.0
     group_results: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+
+
+class FunnelStepResult(BaseModel):
+    """第 2 版本漏斗的单步结果：稳定步骤标识 + 步序 + 分组归因。"""
+
+    step_id: str
+    step_index: int
+    event_id: str
+    step_name: str = ""
+    count: int | None = None
+    rate: float | None = None
+    count_source: str = "computed"
+    group_attribution_available: bool = False
+    group_results: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class FunnelResultV2(BaseModel):
+    """漏斗分析结果产物（第 2 版本）：步骤有稳定标识，结果按版本存放。"""
+
+    schema_version: str = "v2"
+    funnel_id: str
+    funnel_name: str
+    data_version: str
+    funnel_revision: str = ""
+    step_events: list[str] = Field(default_factory=list)
+    steps: list[FunnelStepResult] = Field(default_factory=list)
+    step_counts: list[int | None] = Field(default_factory=list)
+    step_rates: list[float | None] = Field(default_factory=list)
+    total_conversion_rate: float = 0.0
+    group_dimension: str = ""
+    group_results: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    event_group_totals: list[dict[str, Any]] = Field(default_factory=list)
+    counts_available: bool = True
+    migration: dict[str, Any] | None = None
 
 
 class RetentionResult(BaseModel):
@@ -464,3 +507,4 @@ class PathResult(BaseModel):
     sankey_links: list[dict[str, Any]] = Field(default_factory=list)
     conversion_paths: list[list[str]] = Field(default_factory=list)
     total_conversions: int = 0
+    funnel_step_attribution: dict[str, Any] | None = None

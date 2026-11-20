@@ -17,7 +17,42 @@ def index(page: int = 1, size: int = 20) -> dict[str, Any]:
     rows = store.rows("behavior_path")
     total = len(rows)
     start = (page - 1) * size
-    return {"items": rows[start : start + size], "total": total, "page": page, "size": size}
+    items = rows[start : start + size]
+    # 路径页面按“模型 → 起止事件”渲染拓扑；漏斗归因字段随节点一起下发，
+    # 节点被选中时按固定的结果版本 + 步骤标识读取归因。
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    for row in rows:
+        model_node_id = f"model:{row['model_id']}"
+        nodes.append({
+            "id": model_node_id,
+            "name": row["model_id"],
+            "label": row.get("model_id"),
+            "status": row.get("status"),
+            "funnel_id": row.get("funnel_id", ""),
+            "funnel_result_version": row.get("funnel_result_version", ""),
+            "funnel_step_id": row.get("funnel_step_id", ""),
+        })
+        for key, event_id in (("from", row.get("start_event")), ("to", row.get("target_event"))):
+            if not event_id:
+                continue
+            event_node_id = f"event:{event_id}"
+            if not any(node["id"] == event_node_id for node in nodes):
+                nodes.append({
+                    "id": event_node_id,
+                    "name": event_id,
+                    "label": event_id,
+                    "status": "事件",
+                })
+            edges.append({"from": model_node_id, "to": event_node_id, "label": key})
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "nodes": nodes,
+        "edges": edges,
+    }
 
 
 
